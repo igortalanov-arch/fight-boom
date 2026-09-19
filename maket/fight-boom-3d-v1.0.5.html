@@ -1,0 +1,1377 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>КИМОНО · 3D-тренажёр ударов v1.0.5</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{width:100%;height:100%;overflow:hidden;background:#100c0a;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    user-select:none;-webkit-user-select:none}
+  #c{display:block;position:absolute;inset:0}
+  #ui{position:absolute;left:0;right:0;bottom:0;padding:10px 10px 14px;
+      display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+  #row{display:flex;gap:8px;width:100%;max-width:900px;pointer-events:auto}
+  .bt{flex:1;min-width:0;background:rgba(24,18,14,0.82);border:1px solid rgba(255,240,220,0.18);
+      color:#f4ece0;border-radius:12px;padding:9px 6px 10px;cursor:pointer;text-align:center;
+      transition:transform .07s,background .12s,border-color .12s;backdrop-filter:blur(4px)}
+  .bt:active{transform:scale(0.96)}
+  .bt.on{background:rgba(214,92,32,0.92);border-color:rgba(255,220,180,0.75);color:#fff}
+  .bt b{display:block;font-size:11px;letter-spacing:.14em;opacity:.62;font-weight:700}
+  .bt span{display:block;font-size:13px;font-weight:800;letter-spacing:.02em;margin-top:3px;
+           white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #second{display:flex;gap:8px;width:100%;max-width:900px;pointer-events:auto}
+  #second .bt{flex:0 0 auto;padding:8px 16px}
+  #jump{flex:1}
+  #hud{position:absolute;top:0;left:0;right:0;padding:12px 14px;display:flex;justify-content:space-between;
+       align-items:flex-start;font-size:12px;color:rgba(255,240,220,0.55);letter-spacing:.05em;
+       pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,.7)}
+  #hud .r{text-align:right;line-height:1.5}
+  #big{position:absolute;top:22%;left:0;right:0;text-align:center;pointer-events:none;
+       font-size:clamp(20px,5.2vw,44px);font-weight:900;letter-spacing:.06em;color:#fff;
+       opacity:0;transform:scale(.8);text-shadow:0 4px 24px rgba(0,0,0,.8)}
+  @media (max-width:560px){ .bt span{font-size:11px} .bt b{font-size:10px} #row{gap:6px} }
+  @media (min-width:1000px) and (min-height:520px){
+      #ui{left:auto;right:0;top:0;bottom:0;width:238px;justify-content:flex-end;
+          padding:0 14px 16px}
+      #row{flex-direction:column;max-width:none}
+      #second{flex-direction:column;max-width:none}
+      #second .bt,#jump{width:100%;text-align:center}
+  }
+  @media (max-height:480px){ #ui{padding:5px 8px 8px;gap:5px}
+      .bt{padding:5px 5px 6px;border-radius:10px}
+      .bt b{font-size:9px;letter-spacing:.1em} .bt span{font-size:10px;margin-top:1px}
+      #second .bt{padding:5px 12px} #hud{padding:6px 10px;font-size:11px} }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div>КИМОНО · 3D-ТРЕНАЖЁР <b id="ver" style="opacity:.5"></b></div>
+  <div class="r"><span id="stat"></span></div>
+</div>
+<div id="big"></div>
+<div id="ui">
+  <div id="row">
+    <button class="bt" data-strike="1"><b>КЛАВИША 1</b><span>РУКА · КОРПУС</span></button>
+    <button class="bt" data-strike="2"><b>КЛАВИША 2</b><span>РУКА · ГОЛОВА</span></button>
+    <button class="bt" data-strike="3"><b>КЛАВИША 3</b><span>НОГА · КОРПУС</span></button>
+    <button class="bt" data-strike="4"><b>КЛАВИША 4</b><span>НОГА · ГОЛОВА</span></button>
+  </div>
+  <div id="second">
+    <button class="bt" id="jump"><b>ПРОБЕЛ</b><span id="jtxt">ПРЫЖОК: ВЫКЛ</span></button>
+    <button class="bt" data-strike="5"><b>КЛАВИША 5</b><span>ШПАГАТ</span></button>
+  </div>
+</div>
+<script>
+/* ============================================================
+   КИМОНО · 3D-тренажёр ударов  —  версия 1.0.5
+   Один файл, ноль зависимостей, ноль внешних ресурсов.
+
+   Что внутри:
+   • трёхмерный скелет: суставы стоят там же, где у каратиста
+     (плечо/локоть/кисть, бедро/колено/стопа, поясничный и грудной
+     отделы, шея), каждое сочленение имеет предел — сгибаться
+     «не по-человечески» фигурка не может;
+   • растяжка «идеальная»: стопа уходит выше головы, ноги расходятся
+     в шпагат — предел тазобедренного 120°, колено — сгиб только назад;
+   • тело объёмное: каждая кость — сужающаяся призма, сортировка по
+     глубине, плоское освещение. Камера стоит в фиксированном 3/4;
+   • кимоно белое и тканевое: сетка на верле-физике (подол, рукава,
+     штанины, концы пояса) — инерция, гравитация, ветер, столкновения
+     с ногами. Колышется на поворотах и ударах;
+   • тренажёр: 4 удара (рука/нога × корпус/голова), прыжок, шпагат.
+   ============================================================ */
+'use strict';
+const VERSION='1.0.5';
+document.getElementById('ver').textContent='v'+VERSION;
+
+/* ============================================================
+   1. МАТЕМАТИКА 3D
+   Мир: Y — вверх (метры), персонаж смотрит вдоль +Z,
+   +X — его правая сторона.
+   ============================================================ */
+const V={
+  add:(a,b)=>({x:a.x+b.x, y:a.y+b.y, z:a.z+b.z}),
+  sub:(a,b)=>({x:a.x-b.x, y:a.y-b.y, z:a.z-b.z}),
+  mul:(a,s)=>({x:a.x*s,   y:a.y*s,   z:a.z*s}),
+  dot:(a,b)=>a.x*b.x+a.y*b.y+a.z*b.z,
+  cross:(a,b)=>({x:a.y*b.z-a.z*b.y, y:a.z*b.x-a.x*b.z, z:a.x*b.y-a.y*b.x}),
+  len:a=>Math.hypot(a.x,a.y,a.z),
+  norm:a=>{const l=Math.hypot(a.x,a.y,a.z)||1e-9; return {x:a.x/l,y:a.y/l,z:a.z/l};},
+  lerp:(a,b,t)=>({x:a.x+(b.x-a.x)*t, y:a.y+(b.y-a.y)*t, z:a.z+(b.z-a.z)*t}),
+  cp:a=>({x:a.x,y:a.y,z:a.z}),
+  dist:(a,b)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z)
+};
+const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
+const lerp=(a,b,t)=>a+(b-a)*t;
+const smooth=t=>t*t*(3-2*t);
+const easeOut=t=>1-Math.pow(1-t,3);
+/* поворот вектора v вокруг единичной оси k на угол a (Родриг) */
+function rotV(v,k,a){
+  const c=Math.cos(a), s=Math.sin(a), d=V.dot(k,v), cr=V.cross(k,v), e=1-c;
+  return {x:v.x*c+cr.x*s+k.x*d*e, y:v.y*c+cr.y*s+k.y*d*e, z:v.z*c+cr.z*s+k.z*d*e};
+}
+/* кадр (система координат): точка + три орта */
+const FRAME=(o,x,y,z)=>({o:o,x:x,y:y,z:z});
+function fOff(f,a,b,c){   // сдвиг вдоль собственных осей
+  return FRAME({x:f.o.x+f.x.x*a+f.y.x*b+f.z.x*c,
+                y:f.o.y+f.x.y*a+f.y.y*b+f.z.y*c,
+                z:f.o.z+f.x.z*a+f.y.z*b+f.z.z*c}, f.x,f.y,f.z);
+}
+function fRot(f,ax,ang){  // поворот вокруг собственной оси 'x'|'y'|'z'
+  const k = ax==='x'?f.x : ax==='y'?f.y : f.z;
+  return FRAME(f.o, rotV(f.x,k,ang), rotV(f.y,k,ang), rotV(f.z,k,ang));
+}
+const l2w=(f,p)=>({x:f.o.x+f.x.x*p.x+f.y.x*p.y+f.z.x*p.z,
+                   y:f.o.y+f.x.y*p.x+f.y.y*p.y+f.z.y*p.z,
+                   z:f.o.z+f.x.z*p.x+f.y.z*p.y+f.z.z*p.z});
+const w2l=(f,p)=>{const d=V.sub(p,f.o); return {x:V.dot(d,f.x), y:V.dot(d,f.y), z:V.dot(d,f.z)};};
+const d2w=(f,p)=>({x:f.x.x*p.x+f.y.x*p.y+f.z.x*p.z,
+                   y:f.x.y*p.x+f.y.y*p.y+f.z.y*p.z,
+                   z:f.x.z*p.x+f.y.z*p.y+f.z.z*p.z});
+
+/* ============================================================
+   2. КАМЕРА (фиксирована, вид 3/4 спереди-слева)
+   ============================================================ */
+const CAM={eye:{x:-2.30,y:1.52,z:2.62}, tgt:{x:0.10,y:1.00,z:0.42},
+           f:{x:0,y:0,z:1}, r:{x:1,y:0,z:0}, u:{x:0,y:1,z:0}, shake:0};
+function camBuild(){
+  CAM.f=V.norm(V.sub(CAM.tgt,CAM.eye));
+  CAM.r=V.norm(V.cross(CAM.f,{x:0,y:1,z:0}));
+  CAM.u=V.cross(CAM.r,CAM.f);
+}
+let FOC=900, CX=400, CY=300;
+function proj(p){
+  const d=V.sub(p,CAM.eye);
+  const z=V.dot(d,CAM.f);
+  if(z<0.12) return null;
+  const s=FOC/z;
+  return {x:CX+V.dot(d,CAM.r)*s, y:CY-V.dot(d,CAM.u)*s, z:z, s:s};
+}
+
+/* ============================================================
+   3. СКЕЛЕТ: размеры и пределы суставов
+   Рост 1.80 м, таз на высоте 0.96.
+   Пределы — «каратист с идеальной растяжкой», но не резиновый:
+   локоть и колено гнутся ТОЛЬКО в свою сторону и не переразгибаются.
+   ============================================================ */
+const B={
+  pelvisY:0.96,
+  spine:0.30, chest:0.20, neck:0.11, headR:0.107,
+  shHalf:0.185, shUp:0.14,
+  uarm:0.300, farm:0.268, hand:0.175,
+  hipHalf:0.098, hipDn:0.055,
+  thigh:0.450, shin:0.432, foot:0.170,
+  /* радиусы: [начало, конец] */
+  rUarm:[0.062,0.048], rFarm:[0.047,0.036],
+  rThigh:[0.105,0.078], rShin:[0.072,0.046],
+  rSpine:[0.145,0.165], rChest:[0.168,0.152], rNeck:[0.058,0.052],
+  rPelvis:[0.150,0.140]
+};
+/* максимальный сгиб (радианы): 0 = прямая конечность */
+const LIM={
+  elbow: 145*Math.PI/180,      // локоть: сгиб только вперёд, без переразгиба
+  knee : 155*Math.PI/180,      // колено: сгиб только назад
+  hipCone  : 118*Math.PI/180,  // конус бедра от вертикали (шпагат/маваши-гери)
+  shCone   : 152*Math.PI/180,  // конус плеча
+  spineTwist: 52*Math.PI/180,  // скрутка поясницы
+  spineLean : 38*Math.PI/180,
+  neckTwist : 60*Math.PI/180,
+  neckLean  : 34*Math.PI/180,
+  ankle     : 55*Math.PI/180,
+  wrist     : 55*Math.PI/180
+};
+
+/* IK для двух костей с пределами.
+   A — корень (плечо/бедро), T — цель (кисть/стопа), pole — куда смотрит сгиб,
+   maxBend — предел сгиба, rest/cone — конус от «стоячего» направления. */
+function ikLimb(A,T,L1,L2,pole,maxBend,rest,cone){
+  let d=V.sub(T,A), dist=V.len(d);
+  /* Точный предел сгиба: при сгибе φ расстояние «корень—цель»
+     dE² = L1²+L2²+2·L1·L2·cos φ. Отсюда минимально допустимое dE —
+     раньше предел ставился по углу при корне (верно только для L1=L2),
+     из-за чего колено прогибалось до 169° вместо 155°. */
+  const minBend = maxBend==null? 0 : Math.sqrt(L1*L1+L2*L2+2*L1*L2*Math.cos(Math.min(maxBend,Math.PI-0.02)));
+  const maxR=(L1+L2)*0.998, minR=Math.max(Math.abs(L1-L2)+0.012, minBend);
+  let E;
+  if(dist>maxR)      E=V.add(A, V.mul(V.mul(d,1/(dist||1)), maxR));
+  else if(dist<minR) E=V.add(A, V.mul(V.mul(d,1/(dist||1)), minR));
+  else               E=V.cp(T);
+  d=V.sub(E,A); dist=V.len(d)||1e-6;
+  const u=V.mul(d,1/dist);
+  let c=clamp((L1*L1+dist*dist-L2*L2)/(2*L1*dist),-1,1);
+  let a=Math.acos(c);
+  if(maxBend!=null) a=Math.min(a, maxBend*0.5);   // сгиб не больше человеческого
+  let n=V.cross(u,pole);
+  if(V.len(n)<1e-4) n=V.cross(u,{x:0,y:1,z:0});
+  if(V.len(n)<1e-4) n={x:1,y:0,z:0};
+  n=V.norm(n);
+  const d1=rotV(u,n,a), d2=rotV(u,n,-a);
+  let dir = V.dot(d1,pole)>V.dot(d2,pole) ? d1 : d2;
+  if(rest&&cone!=null){                            // конус: сустав не выворачивается
+    const ang=Math.acos(clamp(V.dot(dir,rest),-1,1));
+    if(ang>cone){
+      const ax=V.cross(dir,rest);
+      if(V.len(ax)>1e-6) dir=rotV(dir, V.norm(ax), -(ang-cone));
+    }
+  }
+  const J=V.add(A, V.mul(dir,L1));
+  const E2=V.add(J, V.mul(V.norm(V.sub(E,J)), L2));
+  return {A:A, J:J, E:E2, d1:V.mul(dir,L1), d2:V.mul(V.norm(V.sub(E2,J)),L2), reach:dist};
+}
+
+/* сборка скелета из состояния ST:
+   ST содержит углы корпуса и ЛОКАЛЬНЫЕ цели кистей/стоп (+полюсы сгиба) */
+function pelvisFrame(ST, yOff){
+  const o={x:ST.rx||0, y:B.pelvisY+(ST.ry||0)+(yOff||0), z:ST.rz||0};
+  let f=FRAME(o,{x:1,y:0,z:0},{x:0,y:1,z:0},{x:0,y:0,z:1});
+  f=fRot(f,'y',ST.rootYaw||0);
+  f=fRot(f,'x',ST.rootPitch||0);
+  f=fRot(f,'z',ST.rootRoll||0);
+  return f;
+}
+function buildSkeleton(ST, out){
+  out=out||{};
+  const f=pelvisFrame(ST, ST.jumpY||0);   // jumpY — высота прыжка (её же видит
+                                          // перевод целей в evalKeys)
+  out.pelvis=f;
+  /* поясница */
+  let w=fOff(f, 0, 0.02, 0);
+  w=fRot(w,'y', clamp(ST.waistTwist||0,-LIM.spineTwist,LIM.spineTwist));
+  w=fRot(w,'x', clamp(ST.waistLean ||0,-LIM.spineLean ,LIM.spineLean));
+  w=fRot(w,'z', clamp(ST.waistSide ||0,-LIM.spineLean ,LIM.spineLean));
+  out.waist=w;
+  /* грудь */
+  let ch=fOff(w, 0, B.spine, 0);
+  ch=fRot(ch,'y', clamp(ST.chestTwist||0,-LIM.spineTwist,LIM.spineTwist));
+  ch=fRot(ch,'x', clamp(ST.chestLean ||0,-LIM.spineLean ,LIM.spineLean));
+  out.chest=ch;
+  /* шея и голова */
+  let nk=fOff(ch, 0, B.chest, 0); out.neck=nk;
+  let hd=fOff(nk, 0, B.neck, 0);
+  hd=fRot(hd,'y', clamp(ST.headYaw  ||0,-LIM.neckTwist,LIM.neckTwist));
+  hd=fRot(hd,'x', clamp(ST.headPitch||0,-LIM.neckLean ,LIM.neckLean));
+  hd=fRot(hd,'z', clamp(ST.headTilt ||0,-LIM.neckLean ,LIM.neckLean));
+  out.head=hd;
+  /* плечи и бёдра (в кадрах груди и таза) */
+  out.shL=fOff(ch, -B.shHalf, B.shUp, 0);
+  out.shR=fOff(ch,  B.shHalf, B.shUp, 0);
+  out.hipL=fOff(f, -B.hipHalf, -B.hipDn, 0);
+  out.hipR=fOff(f,  B.hipHalf, -B.hipDn, 0);
+
+  /* руки и ноги: цели — в системе таза; строка 'body'/'head' означает
+     «зона манекена», она переводится в локальные координаты каждый кадр */
+  const TW=(k,dflt)=>{
+    let v = ST[k]!==undefined? ST[k] : dflt;
+    if(typeof v==='string') v = w2l(f, ZONE[v]||ZONE.body);
+    return l2w(f, v);
+  };
+  const poleW=(k,dflt)=> V.norm(d2w(f, ST[k]||dflt));
+  const restDown=V.norm(d2w(f,{x:0,y:-1,z:0}));
+
+  const hL=TW('tHandL',{x:-0.10,y:0.34,z:0.30});
+  const hR=TW('tHandR',{x: 0.12,y:0.22,z:0.16});
+  out.armL=ikLimb(out.shL.o,hL,B.uarm,B.farm, poleW('poleElL',{x:-0.7,y:0.25,z:-0.6}),
+                  LIM.elbow, restDown, LIM.shCone);
+  out.armR=ikLimb(out.shR.o,hR,B.uarm,B.farm, poleW('poleElR',{x: 0.7,y:0.25,z:-0.6}),
+                  LIM.elbow, restDown, LIM.shCone);
+
+  const fL=TW('tFootL',{x:-0.14,y:-0.92,z: 0.34});
+  const fR=TW('tFootR',{x: 0.16,y:-0.92,z:-0.34});
+  out.legL=ikLimb(out.hipL.o,fL,B.thigh,B.shin, poleW('poleKnL',{x:-0.15,y:0.30,z:1}),
+                  LIM.knee, restDown, LIM.hipCone);
+  out.legR=ikLimb(out.hipR.o,fR,B.thigh,B.shin, poleW('poleKnR',{x: 0.15,y:0.30,z:1}),
+                  LIM.knee, restDown, LIM.hipCone);
+
+  /* кисти и стопы: дорисовываем от запястья/щиколотки */
+  out.handL={p:out.armL.E, d:V.norm(out.armL.d2), twist:ST.twistL||0};
+  out.handR={p:out.armR.E, d:V.norm(out.armR.d2), twist:ST.twistR||0};
+  /* носок смотрит вперёд (перпендикулярно голени); если нога вытянута вперёд —
+     носок продолжает удар */
+  const footDir=(leg)=>{
+    const shin=V.norm(leg.d2);
+    const fwd=d2w(f,{x:0,y:0,z:1});
+    let flat=V.sub(fwd, V.mul(shin, V.dot(fwd,shin)));
+    if(V.len(flat)<0.25) flat=V.cp(shin);
+    flat=V.norm(flat);
+    /* Стопа, стоящая на полу, должна лежать плоско. Прежняя формула
+       (перпендикулярно голени) у задней ноги заваливала носок вниз на 41°:
+       носок уходил на 0.02 м под мат, а пятка поднималась на 0.14 м —
+       боец стоял «на цыпочках». Держим стопу горизонтально, пока
+       щиколотка низко; в воздухе (удар) оставляем естественное
+       продолжение голени — носок тянуть не надо. */
+    const w=clamp((leg.E.y-0.14)/0.28,0,1);      // 0 = стоит, 1 = в воздухе
+    if(w<1){
+      let hor={x:flat.x, y:0, z:flat.z};
+      if(V.len(hor)<0.15) hor={x:fwd.x, y:0, z:fwd.z};
+      flat=V.norm(V.lerp(V.norm(hor), flat, w));
+    }
+    return flat;
+  };
+  out.footL={p:out.legL.E, shin:V.norm(out.legL.d2), d:footDir(out.legL)};
+  out.footR={p:out.legR.E, shin:V.norm(out.legR.d2), d:footDir(out.legR)};
+  return out;
+}
+
+/* ============================================================
+   4. ГЕОМЕТРИЯ: объёмные сегменты
+   Каждая кость — сужающаяся призма (кольцо → кольцо), грань — четырёхугольник.
+   Полигоны складываем в общий список, потом сортируем по глубине.
+   ============================================================ */
+const LIGHT=V.norm({x:-0.42,y:0.80,z:0.44});
+let POLY=[];
+function basisOf(d){
+  const u=V.norm(d);
+  const t=Math.abs(u.y)>0.92?{x:1,y:0,z:0}:{x:0,y:1,z:0};
+  const a=V.norm(V.cross(t,u));
+  return {a:a, b:V.cross(u,a)};
+}
+function quadN(p){
+  const n=V.cross(V.sub(p[2],p[0]), V.sub(p[3],p[1]));
+  const l=V.len(n)||1e-9;
+  return {x:n.x/l,y:n.y/l,z:n.z/l};
+}
+function pushQuad(pts,col,alpha,stroke){
+  const n=quadN(pts);
+  const c=V.mul(V.add(V.add(pts[0],pts[1]),V.add(pts[2],pts[3])),0.25);
+  const toEye=V.sub(CAM.eye,c);
+  const nn = V.dot(n,toEye)<0 ? {x:-n.x,y:-n.y,z:-n.z} : n;
+  const lam=Math.max(0,V.dot(nn,LIGHT));
+  const k=0.40+0.62*lam;
+  const sp=0.10*Math.pow(Math.max(0,V.dot(nn,V.norm(V.add(LIGHT,{x:0.4,y:0.9,z:1.2})))),8);
+  const r=Math.min(255,col[0]*k+255*sp), g=Math.min(255,col[1]*k+255*sp), b=Math.min(255,col[2]*k+255*sp);
+  POLY.push({p:pts, z:V.dot(V.sub(c,CAM.eye),CAM.f),
+    fill:'rgb('+(r|0)+','+(g|0)+','+(b|0)+')', a:alpha===undefined?1:alpha,
+    st:stroke||null});
+}
+/* сужающаяся призма: A→B, радиусы rA→rB, N граней, профиль радиуса по длине */
+function seg(A,B,rA,rB,N,col,prof,alpha){
+  const d=V.sub(B,A), L=V.len(d)||1e-6, u=V.mul(d,1/L), bs=basisOf(u);
+  const rings=[];
+  for(let s=0;s<=1;s++){
+    const rr = s? rB:rA;
+    const base = V.add(A, V.mul(d,s));
+    const pr = prof? prof(s) : 1;
+    const ring=[];
+    for(let i=0;i<N;i++){
+      const a=i/N*Math.PI*2;
+      ring.push({x:base.x+(bs.a.x*Math.cos(a)+bs.b.x*Math.sin(a))*rr*pr,
+                 y:base.y+(bs.a.y*Math.cos(a)+bs.b.y*Math.sin(a))*rr*pr,
+                 z:base.z+(bs.a.z*Math.cos(a)+bs.b.z*Math.sin(a))*rr*pr});
+    }
+    rings.push(ring);
+  }
+  for(let i=0;i<N;i++){
+    const j=(i+1)%N;
+    pushQuad([rings[0][i],rings[0][j],rings[1][j],rings[1][i]],col,alpha);
+  }
+  return rings;
+}
+/* лат: несколько колец по профилю (голова, суставы) */
+function lathe(A,up,len,N,rings,prof,col,alpha){
+  const bs=basisOf(up), out=[];
+  for(let k=0;k<rings;k++){
+    const t=k/(rings-1), rr=prof(t);
+    const base=V.add(A, V.mul(up, len*t));
+    const ring=[];
+    for(let i=0;i<N;i++){
+      const a=i/N*Math.PI*2;
+      ring.push({x:base.x+(bs.a.x*Math.cos(a)+bs.b.x*Math.sin(a))*rr,
+                 y:base.y+(bs.a.y*Math.cos(a)+bs.b.y*Math.sin(a))*rr,
+                 z:base.z+(bs.a.z*Math.cos(a)+bs.b.z*Math.sin(a))*rr});
+    }
+    out.push(ring);
+  }
+  for(let k=0;k<rings-1;k++) for(let i=0;i<N;i++){
+    const j=(i+1)%N;
+    pushQuad([out[k][i],out[k][j],out[k+1][j],out[k+1][i]],col,alpha);
+  }
+  return out;
+}
+/* параллелепипед по кадру (ладонь, стопа, накладки манекена) */
+function box(f,hx,hy,hz,col,alpha){
+  const P=(a,b,c)=>({x:f.o.x+f.x.x*a+f.y.x*b+f.z.x*c,
+                     y:f.o.y+f.x.y*a+f.y.y*b+f.z.y*c,
+                     z:f.o.z+f.x.z*a+f.y.z*b+f.z.z*c});
+  const v=[P(-hx,-hy,-hz),P(hx,-hy,-hz),P(hx,hy,-hz),P(-hx,hy,-hz),
+           P(-hx,-hy, hz),P(hx,-hy, hz),P(hx,hy, hz),P(-hx,hy, hz)];
+  const F=[[0,1,2,3],[5,4,7,6],[4,0,3,7],[1,5,6,2],[3,2,6,7],[4,5,1,0]];
+  for(const q of F) pushQuad([v[q[0]],v[q[1]],v[q[2]],v[q[3]]],col,alpha);
+}
+function frameFromDir(o,dir,upHint){
+  const z=V.norm(dir);
+  let up=upHint||{x:0,y:1,z:0};
+  let x=V.cross(up,z);
+  if(V.len(x)<1e-4){ up={x:0,y:0,z:1}; x=V.cross(up,z); }
+  x=V.norm(x);
+  const y=V.cross(z,x);
+  return FRAME(o,x,y,z);
+}
+/* ---------- сборка тела ---------- */
+const COL={
+  gi  :[244,241,232],      // белое кимоно
+  giD :[214,209,196],      // тень кимоно
+  skin:[214,166,124],
+  belt:[38,34,30],
+  hair:[26,22,18],
+  wood:[124,86,52],
+  pad :[52,46,40],
+  face:[226,188,150]
+};
+function buildBody(sk){
+  /* корпус: таз → поясница → грудь (кимоно) */
+  const waistP=sk.waist.o, chestP=sk.chest.o;
+  seg(l2w(sk.pelvis,{x:0,y:-0.10,z:0}), l2w(sk.pelvis,{x:0,y:0.06,z:0}), B.rPelvis[0],B.rPelvis[1],8,COL.gi,
+      t=>1-0.18*Math.cos(t*Math.PI));
+  seg(waistP, chestP, B.rSpine[0],B.rSpine[1],8,COL.gi, t=>1+0.06*Math.sin(t*Math.PI));
+  seg(chestP, l2w(sk.chest,{x:0,y:B.chest*0.72,z:0}), B.rChest[0],B.rChest[1],8,COL.gi,
+      t=>1-0.10*t);
+  /* пояс (оби) */
+  const beltP=l2w(sk.waist,{x:0,y:B.spine*0.10,z:0});
+  seg(l2w(sk.waist,{x:0,y:-0.045,z:0}), l2w(sk.waist,{x:0,y:0.075,z:0}),
+      B.rSpine[0]*1.03,B.rSpine[0]*1.05,8,COL.belt);
+  /* шея и голова */
+  const nkB=sk.neck.o, nkT=l2w(sk.neck,{x:0,y:B.neck,z:0});
+  seg(nkB,nkT,B.rNeck[0],B.rNeck[1],6,COL.skin);
+  const hUp=d2w(sk.head,{x:0,y:1,z:0});
+  const hFw=d2w(sk.head,{x:0,y:0,z:1});
+  const hC=V.add(nkT, V.mul(hUp, B.headR*0.92));
+  lathe(V.add(nkT,V.mul(hUp,-B.headR*0.15)), hUp, B.headR*1.95, 8, 6,
+        t=>B.headR*Math.sin(Math.PI*clamp(t*0.92+0.06,0,1))*1.02+0.004, COL.skin);
+  /* волосы: тонкий лат поверх верхней части черепа */
+  lathe(V.add(nkT,V.mul(hUp,B.headR*0.62)), hUp, B.headR*0.78, 8, 3,
+        t=>B.headR*(0.98-0.30*t), COL.hair);
+  /* лицо: нос + надбровье — пара маленьких коробок, чтобы «читалось» лицо */
+  const face=frameFromDir(V.add(hC,V.mul(hFw,B.headR*0.86)), hFw, hUp);
+  box(fOff(face,0,B.headR*0.10,0), B.headR*0.10, B.headR*0.09, B.headR*0.14, COL.skin);
+  box(fOff(face,0,B.headR*0.02,0), B.headR*0.30, B.headR*0.045, B.headR*0.06, COL.hair);
+  /* руки */
+  for(const side of ['L','R']){
+    const a=sk['arm'+side];
+    seg(a.A, a.J, B.rUarm[0],B.rUarm[1],6,COL.gi, t=>1+0.07*Math.sin(t*Math.PI));
+    seg(a.J, a.E, B.rFarm[0],B.rFarm[1],6,COL.gi, t=>1+0.04*Math.sin(t*Math.PI*0.8));
+    drawHand(sk['hand'+side], side);
+  }
+  /* ноги */
+  for(const side of ['L','R']){
+    const l=sk['leg'+side];
+    seg(l.A, l.J, B.rThigh[0],B.rThigh[1],7,COL.gi, t=>1+0.10*Math.sin(t*Math.PI));
+    seg(l.J, l.E, B.rShin[0],B.rShin[1],7,COL.gi, t=>1+0.06*Math.sin(t*Math.PI*0.7));
+    drawFoot(sk['foot'+side]);
+  }
+}
+/* ладонь: сама ладонь + сомкнутые пальцы + большой палец (не «кружок») */
+function drawHand(h,side){
+  const f=frameFromDir(h.p, h.d, null);
+  const palm=fOff(f, 0,0, B.hand*0.42);
+  box(palm, B.hand*0.30, B.hand*0.40, B.hand*0.40, COL.skin);
+  const fing=fOff(f, 0,0, B.hand*0.86);
+  box(fing, B.hand*0.27, B.hand*0.34, B.hand*0.30, COL.skin);
+  const thumb=fOff(f, (side==='R'?1:-1)*B.hand*0.26, -B.hand*0.10, B.hand*0.42);
+  box(thumb, B.hand*0.16, B.hand*0.17, B.hand*0.26, COL.skin);
+}
+/* стопа: пятка, подъём, носок — отдельные объёмы */
+function drawFoot(ft){
+  let f=frameFromDir(ft.p, ft.d, null);
+  /* Стопа, стоящая на полу, ставится на мат: раньше подошва висела на 2 см,
+     а у задней ноги носок уходил под пол. Признак «в воздухе/на полу» берём
+     тот же, что и в направлении стопы. Опускаем ровно на столько, чтобы
+     низ стопы встал на 4 мм над матом (4 мм — чтобы не мерцало с полом). */
+  const FLOOR=0.004;
+  const low=(fr,hx,hy,hz,cx,cy,cz)=>{ const o={
+      x:fr.o.x+fr.x.x*cx+fr.y.x*cy+fr.z.x*cz,
+      y:fr.o.y+fr.x.y*cx+fr.y.y*cy+fr.z.y*cz,
+      z:fr.o.z+fr.x.z*cx+fr.y.z*cy+fr.z.z*cz };
+    return o.y-(Math.abs(fr.x.y)*hx+Math.abs(fr.y.y)*hy+Math.abs(fr.z.y)*hz); };
+  const soleLow=(fr)=>Math.min(
+    low(fr,B.foot*0.20,B.foot*0.16,B.foot*0.26,0,-B.foot*0.06,-B.foot*0.18),
+    low(fr,B.foot*0.19,B.foot*0.13,B.foot*0.30,0,-B.foot*0.02, B.foot*0.18),
+    low(fr,B.foot*0.22,B.foot*0.10,B.foot*0.20,0, B.foot*0.02, B.foot*0.55));
+  /* Поправка гаснет, если подошва уже высоко: у поднятой ноги (удар) стопа
+     идёт по голени, и трогать её не нужно. Гаснет плавно, иначе на подъёме
+     ноги стопа дёргалась бы вниз на пару сантиметров. */
+  const d=soleLow(f)-FLOOR, ad=Math.abs(d);
+  const k=1-smooth(clamp((ad-0.030)/0.110,0,1));
+  const sh=clamp(-d*k, -0.06, 0.03);
+  if(Math.abs(sh)>0.0008){ f=frameFromDir({x:ft.p.x,y:ft.p.y+sh,z:ft.p.z}, ft.d, null); ft.shift=sh; }
+  else ft.shift=0;
+  const heel=fOff(f, 0, -B.foot*0.06, -B.foot*0.18);
+  box(heel, B.foot*0.20, B.foot*0.16, B.foot*0.26, COL.skin);
+  const arch=fOff(f, 0, -B.foot*0.02, B.foot*0.18);
+  box(arch, B.foot*0.19, B.foot*0.13, B.foot*0.30, COL.skin);
+  const toe=fOff(f, 0, B.foot*0.02, B.foot*0.55);
+  box(toe, B.foot*0.22, B.foot*0.10, B.foot*0.20, COL.skin);
+}
+
+/* ============================================================
+   5. КИМОНО — ткань на верле-физике
+   Панели: подол (юбка куртки), два рукава, две штанины, два хвоста пояса.
+   Верхний ряд каждой панели пришпилен к костям — поэтому при повороте,
+   прыжке и ударе ткань отстаёт и колышется.
+   ============================================================ */
+const GRAV={x:0,y:-9.81,z:0};
+function makePanel(cols,rows,rTop,rBot,len){
+  const P=[];
+  for(let j=0;j<rows;j++) for(let i=0;i<cols;i++)
+    P.push({x:0,y:0,z:0, px:0,py:0,pz:0, pin:j===0, i:i, j:j});
+  return {cols:cols, rows:rows, rTop:rTop, rBot:rBot, len:len, P:P,
+          rest:[], rest2:[], ready:false};
+}
+const CLOTH={
+  skirt:makePanel(16,6,0.205,0.345,0.44),
+  slL:  makePanel(8,4,0.082,0.125,0.27),
+  slR:  makePanel(8,4,0.082,0.125,0.27),
+  ptL:  makePanel(8,3,0.082,0.102,0.145),
+  ptR:  makePanel(8,3,0.082,0.102,0.145),
+  obL:  makePanel(3,5,0.03,0.045,0.34),
+  obR:  makePanel(3,5,0.03,0.045,0.34),
+  wind:0, pelV:{x:0,y:0,z:0}, pelPrev:{x:0,y:0,z:0}, pelA:{x:0,y:0,z:0},
+  panels(){ return [this.skirt,this.slL,this.slR,this.ptL,this.ptR,this.obL,this.obR]; },
+  /* пришпиленные точки пересчитываются от скелета каждый кадр */
+  pin(sk){
+    const pts=[];
+    /* кольцо точек вокруг точки o с осью d (для рукава и штанины) */
+    const ringAt=(o,d,r,cols)=>{
+      const bs=basisOf(d), out=[];
+      for(let i=0;i<cols;i++){ const a=i/cols*Math.PI*2;
+        out.push({x:o.x+(bs.a.x*Math.cos(a)+bs.b.x*Math.sin(a))*r,
+                  y:o.y+(bs.a.y*Math.cos(a)+bs.b.y*Math.sin(a))*r,
+                  z:o.z+(bs.a.z*Math.cos(a)+bs.b.z*Math.sin(a))*r}); }
+      return out; };
+    const ring=(base,up,side,r)=>{
+      const bs=basisOf(up), o=[];
+      for(let i=0;i<16;i++){ const a=i/16*Math.PI*2;
+        o.push({x:base.x+(bs.a.x*Math.cos(a)+bs.b.x*Math.sin(a))*r,
+                y:base.y+(bs.a.y*Math.cos(a)+bs.b.y*Math.sin(a))*r,
+                z:base.z+(bs.a.z*Math.cos(a)+bs.b.z*Math.sin(a))*r}); }
+      return o;
+    };
+    /* подол — у талии */
+    const wBase=l2w(sk.pelvis,{x:0,y:0.04,z:0});
+    const wUp=d2w(sk.pelvis,{x:0,y:1,z:0});
+    const sk2=this.skirt;
+    for(let i=0;i<sk2.cols;i++){
+      const a=i/sk2.cols*Math.PI*2, r=sk2.rTop;
+      const bs=basisOf(wUp);
+      pts.push({pn:sk2, i:i, p:{x:wBase.x+(bs.a.x*Math.cos(a)+bs.b.x*Math.sin(a))*r,
+                                y:wBase.y+(bs.a.y*Math.cos(a)+bs.b.y*Math.sin(a))*r,
+                                z:wBase.z+(bs.a.z*Math.cos(a)+bs.b.z*Math.sin(a))*r}});
+    }
+    /* Рукава: верхний ряд — кольцо на плечевой кости (0.52 длины), остальные
+       ряды получают направляющую ВДОЛЬ руки (плечо→локоть→кисть).
+       Раньше рукав раскладывался вниз и под гравитацией сползал с поднятой
+       руки: низ рукава уходил на 0.32–0.40 м от оси руки — «тряпка под локтем». */
+    for(const s of ['L','R']){
+      const a=sk['arm'+s], pn=this['sl'+s], A=a.A, d=V.norm(a.d1), d2=V.norm(a.d2);
+      pn.seedDir=d;
+      const rows1=Math.max(1,pn.rows-1);
+      pn.guides=[];
+      for(let j=0;j<pn.rows;j++){
+        const arc=B.uarm*0.52 + (j/rows1)*pn.len;
+        const o = arc<=B.uarm ? V.add(A,V.mul(d,arc)) : V.add(a.J,V.mul(d2,arc-B.uarm));
+        const dd= arc<=B.uarm ? d : d2;
+        const r = pn.rTop+(pn.rBot-pn.rTop)*(j/rows1);
+        pn.guides.push(ringAt(o,dd,r,pn.cols)); }
+      for(let i=0;i<pn.cols;i++) pts.push({pn:pn, i:i, p:pn.guides[0][i]});
+    }
+    /* Штанины: верхний ряд — кольцо на голени (0.70), дальше вдоль голени. */
+    for(const s of ['L','R']){
+      const l=sk['leg'+s], pn=this['pt'+s], d=V.norm(l.d2);
+      pn.seedDir=d;
+      const rows1=Math.max(1,pn.rows-1);
+      pn.guides=[];
+      for(let j=0;j<pn.rows;j++){
+        const arc=B.shin*0.70 + (j/rows1)*pn.len;
+        const o=V.add(l.J, V.mul(d,arc));
+        const r = pn.rTop+(pn.rBot-pn.rTop)*(j/rows1);
+        pn.guides.push(ringAt(o,d,r,pn.cols)); }
+      for(let i=0;i<pn.cols;i++) pts.push({pn:pn, i:i, p:pn.guides[0][i]});
+    }
+    /* хвосты пояса — сзади-сбоку */
+    for(const s of ['L','R']){
+      const pn=this['ob'+s];
+      const base=l2w(sk.pelvis,{x:(s==='R'?0.10:-0.10), y:-0.01, z:-0.13});
+      const up=d2w(sk.pelvis,{x:0,y:1,z:0}), sd=d2w(sk.pelvis,{x:(s==='R'?1:-1),y:0,z:0});
+      for(let i=0;i<pn.cols;i++){
+        const t=(i/(pn.cols-1)-0.5)*0.10;
+        pts.push({pn:pn, i:i, p:{x:base.x+sd.x*t, y:base.y+sd.y*t, z:base.z+sd.z*t}});
+      }
+    }
+    return pts;
+  },
+  seed(pins){
+    for(const pn of this.panels()){
+      if(pn.ready) continue;
+      const pin=pins.filter(q=>q.pn===pn);
+      for(const q of pn.P){
+        const src=pin[q.i].p;
+        const drop=q.j*pn.len/(pn.rows-1);
+        /* Раньше ВСЕ панели раскладывались строго вниз. Из-за этого рукав
+           висел под поднятой рукой (в стойке руки согнуты — рука проходила
+           сквозь рукав на 4–12 см), а штанина висела сбоку от поднятой ноги.
+           Теперь у рукавов и штанин своё направление — вдоль кости. */
+        const sd=pn.seedDir||{x:0,y:-1,z:0};
+        q.x=src.x+sd.x*drop; q.y=src.y+sd.y*drop; q.z=src.z+sd.z*drop;
+        q.px=q.x; q.py=q.y; q.pz=q.z;
+      }
+      this.rests(pn);
+      pn.ready=true;
+    }
+  },
+  rests(pn){
+    const at=(i,j)=>pn.P[j*pn.cols+i];
+    pn.rest=[]; pn.rest2=[];
+    for(let j=0;j<pn.rows;j++) for(let i=0;i<pn.cols;i++){
+      const a=at(i,j);
+      if(i+1<pn.cols) pn.rest.push([a,at(i+1,j),V.dist(a,at(i+1,j))||0.001]);
+      if(j+1<pn.rows) pn.rest.push([a,at(i,j+1),V.dist(a,at(i,j+1))||0.001]);
+      if(i+1<pn.cols&&j+1<pn.rows) pn.rest.push([a,at(i+1,j+1),V.dist(a,at(i+1,j+1))*1.42]);
+      if(i+1<pn.cols&&j+1<pn.rows) pn.rest.push([at(i+1,j),at(i,j+1),V.dist(at(i+1,j),at(i,j+1))*1.42]);
+      if(i+2<pn.cols) pn.rest2.push([a,at(i+2,j),V.dist(a,at(i+2,j))||0.001]);
+      if(j+2<pn.rows) pn.rest2.push([a,at(i,j+2),V.dist(a,at(i,j+2))||0.001]);
+    }
+  },
+  update(dt,sk,cols){
+    const pins=this.pin(sk);
+    this.seed(pins);
+    /* ускорение таза → ткань отстаёт (это и есть «колышется») */
+    /* пришпиленные — строго на кость */
+    for(const q of pins){
+      const p=q.pn.P[q.i];
+      p.ox=p.x; p.oy=p.y; p.oz=p.z;          // прежняя точка (для хода кости)
+      p.x=q.p.x; p.y=q.p.y; p.z=q.p.z; p.px=q.p.x; p.py=q.p.y; p.pz=q.p.z;
+    }
+
+    const pv=V.sub(sk.pelvis.o, this.pelPrev);
+    this.pelA=V.mul(V.sub(pv,this.pelV), 1/Math.max(dt,1e-3));
+    this.pelV=pv; this.pelPrev=V.cp(sk.pelvis.o);
+    this.wind+=dt;
+    const gust=Math.sin(this.wind*1.7)*0.35+Math.sin(this.wind*0.9+1.3)*0.25;
+    let drag=V.mul(this.pelA,-0.45);
+    const dl=V.len(drag); if(dl>5.0) drag=V.mul(drag, 5.0/dl);   // иначе на быстрых
+                                                                 // приёмах ткань «взлетает»
+    const wind={x:gust*0.45+drag.x, y:drag.y, z:gust*0.25+drag.z};
+    const g={x:GRAV.x+wind.x, y:GRAV.y+wind.y, z:GRAV.z+wind.z};
+    const damp=0.982, h=Math.min(dt,1/45);
+    for(const pn of this.panels()){
+      for(const q of pn.P){
+        if(q.pin) continue;
+        const vx=(q.x-q.px)*damp, vy=(q.y-q.py)*damp, vz=(q.z-q.pz)*damp;
+        q.px=q.x; q.py=q.y; q.pz=q.z;
+        q.x+=vx+g.x*h*h*60; q.y+=vy+g.y*h*h*60; q.z+=vz+g.z*h*h*60;
+      }
+    }
+    /* связи */
+    for(let it=0;it<4;it++){
+      for(const pn of this.panels()){
+        for(const r of pn.rest) satisfy(r[0],r[1],r[2],1.0);
+        for(const r of pn.rest2) satisfy(r[0],r[1],r[2],0.22);
+      }
+    }
+    /* ограничитель собственного хода ткани (относительно хода кости):
+       ткань едет вместе с телом как угодно быстро, но сама колышется не быстрее 2 м/с */
+    const MAXS=0.034;
+    for(const pn of this.panels()){
+      for(let j=1;j<pn.rows;j++) for(let i=0;i<pn.cols;i++){
+        const q=pn.P[j*pn.cols+i], a=pn.P[i];
+        const ax=a.x-(a.ox===undefined?a.x:a.ox),
+              ay=a.y-(a.oy===undefined?a.y:a.oy),
+              az=a.z-(a.oz===undefined?a.z:a.oz);
+        const dx=q.x-q.px-ax, dy=q.y-q.py-ay, dz=q.z-q.pz-az;
+        const l=Math.sqrt(dx*dx+dy*dy+dz*dz);
+        if(l>MAXS){ const k=MAXS/l; q.x=q.px+ax+dx*k; q.y=q.py+ay+dy*k; q.z=q.pz+az+dz*k; }
+      }
+    }
+    /* Мягкая направляющая: рукав держится на руке, штанина на ноге. Тянем
+       только на долю пути, поэтому ткань продолжает отставать от кости —
+       это и есть колыхание; но не сползает с конечности. Подол и хвосты
+       пояса свободны: их колыхание — самое заметное. */
+    /* Обойма: вершина может отойти от своей направляющей не дальше GS.
+       Мягкая пружина тут не работает — шаг гравитации в этой физике
+       g·h·h·60 = 0.16 м за кадр, то есть в 60 раз больше физического
+       (g·h·h). Пружина с любым разумным натяжением проигрывает, и рукав
+       сползал на 0.12–0.15 м ниже кольца на руке. Обойма возвращает
+       ровно на столько, на сколько надо, и не мешает колыханию внутри. */
+    const GS=0.035;
+    for(const pn of [this.slL,this.slR,this.ptL,this.ptR]){
+      if(!pn.guides) continue;
+      for(let j=1;j<pn.rows;j++) for(let i=0;i<pn.cols;i++){
+        const q=pn.P[j*pn.cols+i], g=pn.guides[j][i];
+        const dx=q.x-g.x, dy=q.y-g.y, dz=q.z-g.z;
+        const l=Math.sqrt(dx*dx+dy*dy+dz*dz);
+        /* Не больше 0.05 м за кадр: иначе на быстром ударе ногой направляющая
+           уезжает и обойма одним кадром дёргает ткань на 0.37 м (22 м/с) —
+           видимый щелчок. Пусть догоняет за 2–3 кадра, это выглядит как надо. */
+        if(l>GS){ const k=Math.min(l-GS, 0.05)/l; q.x-=dx*k; q.y-=dy*k; q.z-=dz*k; }
+      }
+    }
+    /* привязь: вершина не уходит от своей точки крепления дальше своей доли
+       длины панели. Без этого на быстрых приёмах низ кимоно разлетался на 0.4-0.6 м */
+    for(const pn of this.panels()){
+      const rows1=Math.max(1,pn.rows-1);
+      for(let j=1;j<pn.rows;j++) for(let i=0;i<pn.cols;i++){
+        const q=pn.P[j*pn.cols+i], a=pn.P[i];
+        const maxD=(j/rows1)*pn.len*1.08+0.025;
+        const dx=q.x-a.x, dy=q.y-a.y, dz=q.z-a.z;
+        const l=Math.sqrt(dx*dx+dy*dy+dz*dz);
+        if(l>maxD && l>1e-6){ const k=(l-maxD)/l; q.x-=dx*k; q.y-=dy*k; q.z-=dz*k; }
+      }
+    }
+    /* Столкновения — ПОСЛЕДНИМИ. Привязь и ограничитель хода стоят раньше и
+       иначе затягивали ткань обратно в тело (оставалось 2–3 см). Здесь же и пол. */
+    /* Столкновения — каждая панель со СВОИМИ костями: рукав с рукой, штанина
+       с ногой, подол с бёдрами и тазом, хвост пояса с тазом. Раньше ткань
+       сталкивалась только с ногами, и рукав уходил внутрь руки и в грудь. */
+    const M=0.018;                                   // зазор до поверхности кости
+    const cp=(a,b,r)=>[a,b,r+M];
+    const TH_L=cp(sk.legL.A,sk.legL.J,B.rThigh[0]), SH_L=cp(sk.legL.J,sk.legL.E,B.rShin[0]);
+    const TH_R=cp(sk.legR.A,sk.legR.J,B.rThigh[0]), SH_R=cp(sk.legR.J,sk.legR.E,B.rShin[0]);
+    const UP_L=cp(sk.armL.A,sk.armL.J,B.rUarm[0]),  FA_L=cp(sk.armL.J,sk.armL.E,B.rFarm[0]);
+    const UP_R=cp(sk.armR.A,sk.armR.J,B.rUarm[0]),  FA_R=cp(sk.armR.J,sk.armR.E,B.rFarm[0]);
+    const PEL=cp(sk.pelvis.o,sk.waist.o,B.rPelvis[1]), TOR=cp(sk.waist.o,sk.chest.o,B.rChest[1]);
+    const CAPS=new Map();
+    CAPS.set(this.skirt,[TH_L,SH_L,TH_R,SH_R,PEL]);
+    CAPS.set(this.slL,[UP_L,FA_L,PEL,TOR]);  CAPS.set(this.slR,[UP_R,FA_R,PEL,TOR]);
+    CAPS.set(this.ptL,[TH_L,SH_L]);          CAPS.set(this.ptR,[TH_R,SH_R]);
+    CAPS.set(this.obL,[PEL,TH_L]);           CAPS.set(this.obR,[PEL,TH_R]);
+    /* два прохода: первый гасит основное, второй разрешает случаи, когда
+       обойма тянет ткань к кольцу на руке, а кольцо проходит вплотную к груди */
+    for(let pass=0; pass<2; pass++)
+    for(const pn of this.panels()){
+      const caps=CAPS.get(pn)||[PEL];
+      for(const q of pn.P){
+        if(q.pin) continue;
+        for(const c of caps){
+          const ab=V.sub(c[1],c[0]), t=clamp(V.dot(V.sub(q,c[0]),ab)/Math.max(1e-6,V.dot(ab,ab)),0,1);
+          const cl=V.add(c[0],V.mul(ab,t)), d=V.sub(q,cl), l=V.len(d);
+          const rr=c[2];
+          if(l<rr&&l>1e-6){ const k=Math.min(rr-l,0.05)/l;
+            q.x+=d.x*k; q.y+=d.y*k; q.z+=d.z*k; }
+        }
+        if(q.y<0.04){ q.y=0.04; }
+      }
+    }
+  },
+  draw(){
+    for(const pn of this.panels()){
+      const at=(i,j)=>pn.P[j*pn.cols+i];
+      for(let j=0;j<pn.rows-1;j++) for(let i=0;i<pn.cols;i++){
+        const i2=(i+1)%pn.cols;
+        pushQuad([at(i,j),at(i2,j),at(i2,j+1),at(i,j+1)],COL.gi,0.97);
+      }
+    }
+  }
+};
+function satisfy(a,b,rest,stiff){
+  const d=V.sub(b,a), l=V.len(d)||1e-6;
+  const k=(l-rest)/l*0.5*stiff;
+  const mv=V.mul(d,k);
+  if(!a.pin){ a.x+=mv.x; a.y+=mv.y; a.z+=mv.z; }
+  if(!b.pin){ b.x-=mv.x; b.y-=mv.y; b.z-=mv.z; }
+}
+
+/* ============================================================
+   6. МАНЕКЕН (макивара/БОБ) и зоны ударов
+   ============================================================ */
+const DUMMY={
+  x:0.02, z:0.92, r:0.155, h:1.80,
+  bend:0, bendV:0, shake:0, hitFlash:0, last:-9
+};
+const ZONE={
+  body :{x:DUMMY.x, y:1.16, z:DUMMY.z-DUMMY.r-0.02},
+  head :{x:DUMMY.x, y:1.52, z:DUMMY.z-DUMMY.r-0.02},
+  pbody:{x:DUMMY.x, y:1.16, z:DUMMY.z-DUMMY.r-B.hand*0.60},
+  phead:{x:DUMMY.x, y:1.52, z:DUMMY.z-DUMMY.r-B.hand*0.71},
+  kbody:{x:DUMMY.x, y:1.16, z:DUMMY.z-DUMMY.r-0.02},
+  khead:{x:DUMMY.x, y:1.52, z:DUMMY.z-DUMMY.r-0.02}
+};
+function drawDummy(t){
+  const b=DUMMY.bend;
+  const lean=frameFromDir({x:DUMMY.x,y:0,z:DUMMY.z}, {x:0,y:1,z:0}, null);
+  const ax=V.norm({x:1,y:0,z:0});      // отклоняется от бойца (в +Z)
+  const pts=[];
+  const N=8;
+  for(let k=0;k<=6;k++){
+    const y=[0,0.10,0.35,0.70,1.10,1.42,1.74][k];
+    const off=Math.pow(Math.max(0,y-0.05)/1.75,1.6)*b;
+    pts.push({o:{x:DUMMY.x, y:y, z:DUMMY.z+off}, r:(k>=4? 0.175: (k===0?0.30:0.115))});
+  }
+  for(let k=0;k<pts.length-1;k++){
+    const A=pts[k], B=pts[k+1];
+    const col=(k>=4)?COL.pad:(k===0?[86,62,40]:COL.wood);
+    seg(A.o, B.o, A.r, B.r, N, col);
+  }
+  /* стойка-основание */
+  box(FRAME({x:DUMMY.x,y:0.045,z:DUMMY.z},{x:1,y:0,z:0},{x:0,y:1,z:0},{x:0,y:0,z:1}),
+      0.30,0.045,0.30,[70,50,34]);
+  /* метки зон: тонкие кольца на корпусе и голове */
+  for(const zn of ['body','head']){
+    const z=ZONE[zn];
+    const f=frameFromDir({x:z.x,y:z.y,z:z.z+DUMMY.r*0.55},{x:0,y:1,z:0},null);
+    box(f, 0.055,0.055,0.012, DUMMY.last===zn&&t-DUMMY.last<0.35?[236,120,60]:[190,170,150],0.85);
+  }
+}
+
+/* ============================================================
+   7. ЗВУК (синтез, без файлов)
+   ============================================================ */
+const SFX={
+  ac:null, master:null, noise:null, on:true,
+  init(){
+    if(this.ac){ if(this.ac.state==='suspended')this.ac.resume(); return; }
+    try{
+      const AC=window.AudioContext||window.webkitAudioContext;
+      this.ac=new AC(); this.master=this.ac.createGain(); this.master.gain.value=0.5;
+      this.master.connect(this.ac.destination);
+      const n=this.ac.sampleRate*1.0;
+      this.noise=this.ac.createBuffer(1,n,this.ac.sampleRate);
+      const d=this.noise.getChannelData(0);
+      for(let i=0;i<n;i++) d[i]=Math.random()*2-1;
+    }catch(e){ this.ac=null; }
+  },
+  burst(dur,f0,f1,g,q){
+    if(!this.ac||!this.on) return;
+    const ac=this.ac,t=ac.currentTime;
+    const s=ac.createBufferSource(); s.buffer=this.noise;
+    const f=ac.createBiquadFilter(); f.type='bandpass'; f.Q.value=q||1.0;
+    f.frequency.setValueAtTime(f0,t); f.frequency.exponentialRampToValueAtTime(Math.max(40,f1),t+dur);
+    const g2=ac.createGain();
+    g2.gain.setValueAtTime(0,t); g2.gain.linearRampToValueAtTime(g,t+0.006);
+    g2.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    s.connect(f); f.connect(g2); g2.connect(this.master); s.start(t); s.stop(t+dur+0.02);
+  },
+  tone(type,f0,f1,dur,g,delay){
+    if(!this.ac||!this.on) return;
+    const ac=this.ac,t=ac.currentTime+(delay||0);
+    const o=ac.createOscillator(); o.type=type;
+    o.frequency.setValueAtTime(f0,t); o.frequency.exponentialRampToValueAtTime(Math.max(20,f1),t+dur);
+    const g2=ac.createGain();
+    g2.gain.setValueAtTime(0,t); g2.gain.linearRampToValueAtTime(g,t+0.01);
+    g2.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g2); g2.connect(this.master); o.start(t); o.stop(t+dur+0.02);
+  },
+  whoosh(){ this.burst(0.22,900,2600,0.16,1.1); },
+  thud(power){
+    this.tone('sine',170,44,0.42,0.42*power);
+    this.burst(0.20,2400,420,0.34*power,0.8);
+    this.tone('triangle',300,80,0.14,0.16*power);
+  },
+  jump(){ this.tone('square',220,460,0.10,0.07); this.burst(0.16,600,1800,0.08,0.9); },
+  land(){ this.tone('sine',130,52,0.26,0.30); this.burst(0.24,700,160,0.20,0.7); }
+};
+
+/* ============================================================
+   8. ЧАСТИЦЫ (пыль, брызги от удара)
+   ============================================================ */
+const PT=[];
+function puff(p,n,pow,col){
+  for(let i=0;i<n;i++){
+    const a=Math.random()*Math.PI*2, e=Math.random()*1.2;
+    PT.push({p:V.cp(p),
+      v:{x:Math.cos(a)*(0.6+Math.random()*1.6)*pow, y:Math.sin(e)*(0.8+Math.random()*1.8)*pow,
+         z:Math.sin(a)*(0.6+Math.random()*1.6)*pow},
+      t:0, life:0.45+Math.random()*0.5, r:0.012+Math.random()*0.03,
+      c:col||[236,226,208]});
+  }
+}
+function dust(p,n){ puff(p,n,0.5,[190,175,150]); }
+function stepParticles(){
+  for(let i=PT.length-1;i>=0;i--){
+    const q=PT[i]; q.t+=DT;
+    if(q.t>q.life){ PT.splice(i,1); continue; }
+    q.v.y-=9.0*DT; q.v.x*=0.965; q.v.z*=0.965;
+    q.p.x+=q.v.x*DT; q.p.y+=q.v.y*DT; q.p.z+=q.v.z*DT;
+    if(q.p.y<0.02){ q.p.y=0.02; q.v.y*=-0.3; q.v.x*=0.8; q.v.z*=0.8; }
+  }
+}
+function drawParticles(){
+  for(const q of PT){
+    const pr=proj(q.p); if(!pr) continue;
+    const a=1-q.t/q.life;
+    ctx.globalAlpha=a*0.85;
+    ctx.fillStyle='rgb('+q.c[0]+','+q.c[1]+','+q.c[2]+')';
+    const r=Math.max(1,q.r*pr.s);
+    ctx.beginPath(); ctx.ellipse(pr.x,pr.y,r,r,0,0,6.2832); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+
+/* ============================================================
+   9. СТОЙКА И ПРИЁМЫ
+   Цели кистей/стоп задаются в системе таза; строка 'body'/'head' —
+   автоматически переводится в зону манекена.
+   ============================================================ */
+const GUARD={
+  rx:0, ry:-0.06, rz:0,
+  rootYaw:0.52, rootPitch:0.02, rootRoll:0,
+  waistTwist:0, waistLean:0.02, waistSide:0,
+  chestTwist:0.05, chestLean:0,
+  headYaw:-0.46, headPitch:-0.02, headTilt:0,
+  tHandL:{x:-0.14,y:0.32,z:0.34}, tHandR:{x: 0.15,y:0.20,z:0.15},
+  tFootL:{x:-0.16,y:-0.82,z: 0.36}, tFootR:{x: 0.18,y:-0.82,z:-0.36},
+  poleElL:{x:-0.75,y:0.30,z:-0.55}, poleElR:{x: 0.75,y:0.30,z:-0.55},
+  poleKnL:{x:-0.20,y:0.35,z:1}, poleKnR:{x: 0.20,y:0.35,z:1},
+  twistL:0, twistR:0
+};
+function K(o){ const r={}; for(const k in GUARD) r[k]=GUARD[k]; for(const k in o) r[k]=o[k]; return r; }
+const MOVES={
+ m1:{name:'ОЙ-ЦУКИ · КОРПУС', zone:'body', part:'handL', dur:0.72, hit:0.46, jh:0.18, jf:0.22, keys:[
+   {t:0},
+   {t:0.26, e:'snap', waistTwist:0.24, chestTwist:0.20, rootYaw:0.74, rz:-0.04, ry:-0.04,
+    tHandL:{x:-0.17,y:0.30,z:0.14}, tHandR:{x:0.11,y:0.24,z:0.17}, headYaw:-0.6,
+    tFootL:{x:-0.16,y:-0.76,z: 0.46}, tFootR:{x:0.18,y:-0.80,z:-0.38}},
+   {t:0.46, e:'lin', waistTwist:-0.36, chestTwist:-0.30, rootYaw:0.15, rz:0.24, ry:-0.10,
+    tHandL:'pbody', tHandR:{x:0.10,y:0.15,z:0.02}, twistL:1.15, twistR:0.4, headYaw:-0.2,
+    tFootL:{x:-0.16,y:-0.78,z: 0.44}, tFootR:{x:0.18,y:-0.78,z:-0.40}},
+   {t:0.60, waistTwist:-0.34, chestTwist:-0.28, rootYaw:0.15, rz:0.24, ry:-0.10,
+    tHandL:'pbody', tHandR:{x:0.10,y:0.15,z:0.02}, twistL:1.15, twistR:0.4, headYaw:-0.2,
+    tFootL:{x:-0.16,y:-0.78,z: 0.44}, tFootR:{x:0.18,y:-0.78,z:-0.40}},
+   {t:1}]},
+ m2:{name:'АГЕ-ЦУКИ · ГОЛОВА', zone:'head', part:'handR', dur:0.78, hit:0.50, jh:0.38, jf:0.00, keys:[
+   {t:0},
+   {t:0.29, e:'snap', ry:-0.08, waistLean:0.18, chestLean:0.14, rootYaw:0.62, rz:-0.02,
+    tHandR:{x:0.22,y:-0.04,z:-0.08}, poleElR:{x:0.55,y:-0.35,z:-0.75},
+    tHandL:{x:-0.16,y:0.34,z:0.30}, headYaw:-0.62, headPitch:0.06,
+    tFootL:{x:-0.16,y:-0.80,z: 0.36}, tFootR:{x:0.18,y:-0.76,z:-0.40}},
+   {t:0.50, e:'lin', ry:-0.08, waistLean:-0.24, chestLean:-0.18, rootYaw:0.18, rz:0.31,
+    tHandR:'phead', twistR:1.35, poleElR:{x:0.70,y:0.20,z:-0.55},
+    tHandL:{x:-0.14,y:0.26,z:0.18}, headYaw:-0.16, headPitch:-0.10,
+    tFootL:{x:-0.16,y:-0.80,z: 0.42}, tFootR:{x:0.18,y:-0.80,z:-0.44}},
+   {t:0.64, ry:-0.08, waistLean:-0.22, chestLean:-0.16, rootYaw:0.18, rz:0.31,
+    tHandR:'phead', twistR:1.35, poleElR:{x:0.70,y:0.20,z:-0.55},
+    tHandL:{x:-0.14,y:0.26,z:0.18}, headYaw:-0.16, headPitch:-0.10,
+    tFootL:{x:-0.16,y:-0.80,z: 0.42}, tFootR:{x:0.18,y:-0.80,z:-0.44}},
+   {t:1}]},
+ m3:{name:'МАВАШИ-ГЕРИ · КОРПУС', zone:'body', part:'footR', dur:0.86, hit:0.52, jh:0.55, jf:0.00, keys:[
+   {t:0},
+   {t:0.30, e:'snap', rootYaw:0.96, ry:-0.04, waistSide:0.18, waistLean:0.06, rz:-0.08,
+    tFootR:{x:0.26,y:-0.40,z:0.32}, poleKnR:{x:0.55,y:0.25,z:1},
+    tHandL:{x:-0.30,y:0.36,z:0.22}, tHandR:{x:0.30,y:0.30,z:0.02}, headYaw:-0.72},
+   {t:0.52, e:'lin', rootYaw:0.4, ry:-0.02, waistSide:0.36, waistLean:-0.16, rootPitch:-0.18, rz:-0.04,
+    tFootR:'kbody', tFootL:{x:-0.16,y:-0.86,z: 0.36}, poleKnR:{x:0.35,y:0.15,z:1},
+    tHandL:{x:-0.36,y:0.28,z:0.08}, tHandR:{x:0.34,y:0.22,z:-0.12}, headYaw:-0.3},
+   {t:0.66, rootYaw:0.38, waistSide:0.34, waistLean:-0.15, rootPitch:-0.17, rz:-0.04, ry:-0.02,
+    tFootR:'kbody', tFootL:{x:-0.16,y:-0.86,z: 0.36}, poleKnR:{x:0.35,y:0.15,z:1},
+    tHandL:{x:-0.36,y:0.28,z:0.08}, tHandR:{x:0.34,y:0.22,z:-0.12}, headYaw:-0.3},
+   {t:1}]},
+ m4:{name:'МАВАШИ-ГЕРИ · ГОЛОВА', zone:'head', part:'footR', dur:0.92, hit:0.54, jh:0.22, jf:-0.26, keys:[
+   {t:0},
+   {t:0.30, e:'snap', rootYaw:1.06, ry:-0.06, waistSide:0.22, waistLean:0.08, rz:-0.02,
+    tFootR:{x:0.28,y:-0.24,z:0.30}, poleKnR:{x:0.55,y:0.30,z:1},
+    tHandL:{x:-0.32,y:0.38,z:0.20}, tHandR:{x:0.32,y:0.32,z:0.0}, headYaw:-0.8},
+   {t:0.54, e:'lin', rootYaw:0.26, ry:-0.02, waistSide:0.54, waistLean:-0.32, rootPitch:-0.32, rz:0.17,
+    tFootR:'khead', tFootL:{x:-0.16,y:-0.86,z: 0.24}, poleKnR:{x:0.30,y:0.10,z:1},
+    tHandL:{x:-0.40,y:0.24,z:0.04}, tHandR:{x:0.38,y:0.18,z:-0.18}, headYaw:-0.24},
+   {t:0.68, rootYaw:0.24, waistSide:0.52, waistLean:-0.30, rootPitch:-0.31, rz:0.17, ry:-0.02,
+    tFootR:'khead', tFootL:{x:-0.16,y:-0.86,z: 0.24}, poleKnR:{x:0.30,y:0.10,z:1},
+    tHandL:{x:-0.40,y:0.24,z:0.04}, tHandR:{x:0.38,y:0.18,z:-0.18}, headYaw:-0.24},
+   {t:1}]},
+ m5:{name:'ШПАГАТ', zone:null, part:null, dur:1.75, hit:null, keys:[
+   {t:0},
+   {t:0.28, ry:-0.30, tFootL:{x:-0.58,y:-0.42,z:0.10}, tFootR:{x:0.58,y:-0.42,z:0.10},
+    poleKnL:{x:0,y:0.1,z:1}, poleKnR:{x:0,y:0.1,z:1},
+    tHandL:{x:-0.22,y:0.30,z:0.26}, tHandR:{x:0.22,y:0.30,z:0.26}, waistLean:0.10},
+   {t:0.58, ry:-0.80, tFootL:{x:-0.98,y:-0.07,z:0.09}, tFootR:{x:0.98,y:-0.07,z:0.09},
+    poleKnL:{x:0,y:0.05,z:1}, poleKnR:{x:0,y:0.05,z:1},
+    tHandL:{x:-0.24,y:0.16,z:0.20}, tHandR:{x:0.24,y:0.16,z:0.20},
+    waistLean:-0.06, chestLean:-0.06, headPitch:-0.06, rootRoll:0.02},
+   {t:0.80, ry:-0.80, tFootL:{x:-0.98,y:-0.07,z:0.09}, tFootR:{x:0.98,y:-0.07,z:0.09},
+    poleKnL:{x:0,y:0.05,z:1}, poleKnR:{x:0,y:0.05,z:1},
+    tHandL:{x:-0.24,y:0.16,z:0.20}, tHandR:{x:0.24,y:0.16,z:0.20},
+    waistLean:-0.06, chestLean:-0.06, headPitch:-0.06},
+   {t:1}]}
+};
+/* ключи дополняются стойкой: что не указано — как в GUARD */
+for(const id in MOVES) MOVES[id].keys=MOVES[id].keys.map(k=>K(k));
+
+function evalKeys(keys,k,yOff,tz,fwd){
+  let i=0; while(i<keys.length-2 && k>keys[i+1].t) i++;
+  const a=keys[i], b=keys[i+1];
+  const u=clamp((k-a.t)/Math.max(1e-6,b.t-a.t),0,1);
+  const e = a.e==='lin'?u : a.e==='out'?easeOut(u) : a.e==='in'?u*u
+          : a.e==='snap'?Math.pow(u,2.2) : smooth(u);
+  const out={};
+  const seen={};
+  for(const key in a) seen[key]=1;
+  for(const key in b) seen[key]=1;
+  for(const key in seen){
+    if(key==='t'||key==='e') continue;
+    const va=a[key], vb=b[key];
+    if(va===undefined) out[key]=vb;
+    else if(vb===undefined) out[key]=va;
+    else if(typeof va==='number') out[key]=lerp(va,vb,e);
+    else if(typeof va==='string'||typeof vb==='string') out[key]= (e<0.5? va: vb);
+    else if(va&&va.x!==undefined) out[key]=V.lerp(va,vb,e);
+    else out[key]= e<0.5? va: vb;
+  }
+  /* второй проход: цель-зона ('body'/'head') превращается в локальный вектор,
+     иначе на границе ключа кисть/стопа прыгала (было NaN и рывок позы) */
+  if(fwd) out.rz=(out.rz||0)+fwd;   // полёт вперёд — до перевода целей
+  const pf=pelvisFrame(out, yOff);
+  const ZS=(z)=> tz? {x:z.x, y:z.y, z:z.z+tz} : z;   // сдвиг цели по глубине (инструмент)
+  for(const key in seen){
+    if(key==='t'||key==='e') continue;
+    const va=a[key], vb=b[key];
+    if(typeof va==='string'||typeof vb==='string'){
+      const A = typeof va==='string'? w2l(pf, ZS(ZONE[va]||ZONE.body)) : va;
+      const B = typeof vb==='string'? w2l(pf, ZS(ZONE[vb]||ZONE.body)) : vb;
+      if(A&&B&&A.x!==undefined&&B.x!==undefined) out[key]=V.lerp(A,B,e);
+    }
+  }
+  return out;
+}
+
+/* ============================================================
+   10. СОСТОЯНИЕ ТРЕНАЖЁРА
+   ============================================================ */
+const G={
+  t:0, mv:null, mk:0, dur:1, jumpOn:false, jumpA:false,
+  hitDone:false, landed:false, hits:0, shots:0, hold:false,
+  lastSpeed:0, lastName:'', freeze:0, camShake:0, fps:60, rzOff:0, blend:0, blendFrom:null
+};
+let SK={}, STC={}, DT=1/60, PREV={L:null,R:null,FL:null,FR:null};
+/* фаза полёта: u от 0 (отрыв) до 1 (приземление).
+   Высота (jh) и продвижение вперёд (jf) заданы по приёму: руке нужен подлёт
+   к цели (в чистом прыжке вверх кулак до корпуса не доставал на 0.31 м),
+   ноге — высота. Продвижение нарастает и остаётся: приземляемся впереди. */
+const JUC=0.60;   // доля полёта, на которую приходится продвижение вперёд
+function jumpPhase(k,mv){
+  const u=clamp((k-0.10)/0.80,0,1);
+  const jf=(mv&&mv.jf!=null?mv.jf:0.10);
+  /* Продвижение вперёд растёт до контакта (как и было) и плавно сходит
+     к нулю к концу приёма. Раньше f=jf·u оставался до k=1, и в момент
+     завершения приёма тело скачком возвращалось на 0.22–0.28 м за кадр.
+     Всё, что раньше контакта (u ≤ 0.60), считается ровно как прежде —
+     геометрия касания не меняется. */
+  const f = u<=JUC? jf*u : jf*JUC*(1-u)/(1-JUC);
+  return {y:4*(mv&&mv.jh!=null?mv.jh:0.30)*u*(1-u), f:f, u:u};
+}
+
+function idleState(t){
+  const b=Math.sin(t*1.55), b2=Math.sin(t*0.72+1.1), b3=Math.sin(t*0.9+0.4);
+  const st={};
+  for(const k in GUARD) st[k]=GUARD[k];
+  st.ry=GUARD.ry+b*0.013;
+  st.rz=GUARD.rz+b2*0.012;
+  st.waistLean=GUARD.waistLean+b*0.022;
+  st.chestLean=GUARD.chestLean-b*0.018;
+  st.headPitch=GUARD.headPitch+b3*0.018;
+  st.rootYaw=GUARD.rootYaw+b2*0.030;
+  st.rootRoll=GUARD.rootRoll-b2*0.012;
+  st.tHandL=V.lerp(GUARD.tHandL,{x:-0.15,y:0.335,z:0.355},0.5+0.5*b);
+  st.tHandR=V.lerp(GUARD.tHandR,{x: 0.16,y:0.215,z:0.165},0.5+0.5*b2);
+  st.tFootL=V.lerp(GUARD.tFootL,{x:-0.16,y:-0.82,z: 0.365},0.5+0.5*b2);
+  st.tFootR=V.lerp(GUARD.tFootR,{x: 0.18,y:-0.82,z:-0.355},0.5+0.5*b2);
+  return st;
+}
+function currentState(){
+  if(!G.mv) return idleState(G.t);
+  const ph = G.jumpA? jumpPhase(G.mk, G.mv) : {y:0, f:0, u:0};
+  let st = evalKeys(G.mv.keys, clamp(G.mk,0,1), ph.y, G.rzOff, ph.f);
+  st.jumpY = ph.y;                       // чтобы скелет тоже поднимался
+  if(G.blend>0) st=lerpState(G.blendFrom, st, 1-G.blend);
+  return st;
+}
+/* скорость бьющей конечности перед контактом (м/с) */
+function limbSpeed(){
+  const key=G.mv? G.mv.part : null;
+  if(!key) return 0;
+  const now = key==='handL'? SK.handL.p : key==='handR'? SK.handR.p
+            : key==='footR'? SK.footR.p : SK.footL.p;
+  const prev= PREV[key];
+  return prev? V.dist(now,prev)/Math.max(DT,1e-3) : 0;
+}
+/* Переход в новый приём — не мгновенный: запоминаем текущую позу и за
+   BLENDT секунд подъезжаем к новой. Без этого перезапуск приёма на ходу
+   (нажали 4, не дождались, нажали 2) давал скачок до 0.8 м за один кадр.
+   Строковые зоны в замер приходят уже как векторы, поэтому мешаем числа
+   и векторы; контакт бывает на k≈0.5, то есть позже BLENDT. */
+const BLENDT=0.13;
+function lerpState(a,b,w){
+  if(w>=1||!a) return b;
+  const out={}, seen={};
+  for(const k in a) seen[k]=1;
+  for(const k in b) seen[k]=1;
+  for(const k in seen){
+    const va=a[k], vb=b[k];
+    if(typeof va==='number'&&typeof vb==='number') out[k]=lerp(va,vb,w);
+    else if(va&&va.x!==undefined&&vb&&vb.x!==undefined) out[k]=V.lerp(va,vb,w);
+    else out[k]= vb!==undefined? vb : va;
+  }
+  return out;
+}
+function startStrike(id){
+  const mv=MOVES[id]; if(!mv) return;
+  SFX.init();
+  G.blendFrom=currentState(); G.blend=1;   // откуда едем
+  G.mv=mv; G.mk=0; G.dur=mv.dur*(G.jumpOn&&id!=='m5'?1.28:1);
+  G.hitDone=false; G.landed=false;
+  G.jumpA = (G.jumpOn && id!=='m5');
+  G.shots++;
+  if(G.jumpA) SFX.jump();
+  showBig((G.jumpA?'В ПРЫЖКЕ · ':'')+mv.name);
+}
+function doHit(){
+  const z=ZONE[G.mv.zone];
+  const sp=limbSpeed();
+  G.lastSpeed=sp;
+  DUMMY.bendV += (G.jumpA? 4.4:3.4) + Math.min(2.2, sp*0.16);
+  DUMMY.last=G.mv.zone; DUMMY.lastT=G.t; DUMMY.hitFlash=1;
+  if(z){ puff(z, G.jumpA?22:16, 1.0, [248,242,226]); }
+  SFX.thud(G.jumpA?1.15:1.0);
+  G.camShake=Math.max(G.camShake, G.jumpA?13:9);
+  G.freeze=G.jumpA?0.075:0.055;
+  G.hits++;
+  showStat();
+}
+function update(dt){
+  G.t+=dt;
+  if(G.blend>0){ G.blend=Math.max(0, G.blend-dt/BLENDT); if(G.blend===0) G.blendFrom=null; }
+  if(G.mv){
+    if(!G.hold) G.mk+=dt/G.dur;
+    if(G.mv.hit!=null && !G.hitDone && G.mk>=G.mv.hit){ G.hitDone=true; doHit(); }
+    if(G.jumpA && !G.landed && G.mk>0.90){
+      G.landed=true; SFX.land();
+      dust({x:(STC.rx||0)+0.1, y:0.05, z:(STC.rz||0)+0.1}, 12);
+      G.camShake=Math.max(G.camShake,5);
+    }
+    if(G.mk>=1){ G.mv=null; G.hitDone=false; G.landed=false; G.jumpA=false; }
+  }
+  /* манекен: пружина */
+  DUMMY.bendV += (-DUMMY.bend*96 - DUMMY.bendV*9.5)*dt;
+  DUMMY.bend  += DUMMY.bendV*dt;
+  DUMMY.hitFlash=Math.max(0,DUMMY.hitFlash-dt*3);
+  /* стоп-кадр и тряска */
+  G.camShake*=Math.pow(0.0016,dt);
+  if(G.camShake<0.05) G.camShake=0;
+  stepParticles();
+}
+/* медленное время на контакте */
+function frameScale(){
+  if(G.freeze>0){ G.freeze-=DT; return 0.16; }
+  return 1;
+}
+
+/* ============================================================
+   11. ОТРИСОВКА СЦЕНЫ
+   ============================================================ */
+function drawBackdrop(){
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#221914'); g.addColorStop(0.55,'#1a1310'); g.addColorStop(1,'#0e0a08');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  /* мягкое пятно света за фигуркой */
+  const p=proj({x:-0.2,y:1.5,z:-0.6});
+  if(p){
+    const r=Math.max(160, H*0.62);
+    const rg=ctx.createRadialGradient(p.x,p.y-r*0.25,0,p.x,p.y-r*0.25,r);
+    rg.addColorStop(0,'rgba(255,214,160,0.13)'); rg.addColorStop(1,'rgba(255,214,160,0)');
+    ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(p.x,p.y-r*0.25,r,0,6.2832); ctx.fill();
+  }
+}
+function drawFloor(){
+  const N=13, M=13;
+  ctx.lineWidth=1;
+  for(let i=0;i<=N;i++){
+    const z=-1.6+ (i/N)*4.4;
+    const a=proj({x:-2.6,y:0,z:z}), b=proj({x:2.6,y:0,z:z});
+    if(!a||!b) continue;
+    ctx.strokeStyle='rgba(255,208,150,'+(0.05+0.035*Math.abs(i/N-0.4))+')';
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+  }
+  for(let i=0;i<=M;i++){
+    const x=-2.6+(i/M)*5.2;
+    const a=proj({x:x,y:0,z:-1.6}), b=proj({x:x,y:0,z:2.8});
+    if(!a||!b) continue;
+    ctx.strokeStyle='rgba(255,208,150,0.045)';
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+  }
+  /* пол под ногами чуть светлее */
+  const q=[proj({x:-2.6,y:0,z:-1.6}),proj({x:2.6,y:0,z:-1.6}),proj({x:2.6,y:0,z:2.8}),proj({x:-2.6,y:0,z:2.8})];
+  if(q[0]&&q[1]&&q[2]&&q[3]){
+    ctx.beginPath(); ctx.moveTo(q[0].x,q[0].y);
+    for(let i=1;i<4;i++) ctx.lineTo(q[i].x,q[i].y);
+    ctx.closePath();
+    const g=ctx.createLinearGradient(0,q[0].y,0,q[2].y);
+    g.addColorStop(0,'rgba(60,40,26,0.55)'); g.addColorStop(1,'rgba(30,20,13,0.30)');
+    ctx.fillStyle=g; ctx.fill();
+  }
+}
+function shadow(x,z,r,a){
+  const p=proj({x:x,y:0.005,z:z}); if(!p) return;
+  ctx.save(); ctx.globalAlpha=a;
+  ctx.fillStyle='rgba(0,0,0,0.55)';
+  ctx.beginPath(); ctx.ellipse(p.x,p.y,r*p.s*0.55,r*p.s*0.22,0,0,6.2832); ctx.fill();
+  ctx.restore();
+}
+function render(){
+  POLY.length=0;
+  buildBody(SK);
+  CLOTH.draw();
+  drawDummy(G.t);
+  POLY.sort((a,b)=>b.z-a.z);
+  for(const q of POLY){
+    const pr=[proj(q.p[0]),proj(q.p[1]),proj(q.p[2]),proj(q.p[3])];
+    if(!pr[0]||!pr[1]||!pr[2]||!pr[3]) continue;
+    ctx.globalAlpha=q.a;
+    ctx.fillStyle=q.fill;
+    ctx.beginPath(); ctx.moveTo(pr[0].x,pr[0].y);
+    ctx.lineTo(pr[1].x,pr[1].y); ctx.lineTo(pr[2].x,pr[2].y); ctx.lineTo(pr[3].x,pr[3].y);
+    ctx.closePath(); ctx.fill();
+    /* тонкая линия того же цвета — убирает швы между гранями */
+    ctx.strokeStyle=q.fill; ctx.lineWidth=0.7; ctx.stroke();
+  }
+  ctx.globalAlpha=1;
+}
+
+/* ============================================================
+   12. КАНВАС, ЦИКЛ, ВВОД
+   ============================================================ */
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+let W=0,H=0,DPR=0;
+const DPR0=Math.min(2, window.devicePixelRatio||1);   // потолок масштаба
+/* Габарит сцены в единицах проекции (X=dot(d,r)/z, Y=dot(d,u)/z) —
+   объединение ВСЕХ поз, включая прыжки и шпагат; измерено инструментом
+   camfit2.js по реальным вершинам полигонов, а не по суставам (суставы
+   занижают габарит на 0.1 ширины экрана на телефоне). */
+const SCENE={X0:-0.2921, X1:0.2408, Y0:-0.4224, Y1:0.3839};
+const hudEl=document.getElementById('hud'), uiEl=document.getElementById('ui');
+function resize(){
+  if(!DPR) DPR=DPR0;
+  W=window.innerWidth; H=window.innerHeight;
+  cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR);
+  cv.style.width=W+'px'; cv.style.height=H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  /* фокус подгоняем так, чтобы вся сцена влезла в прямоугольник экрана,
+     свободный от HUD сверху и от кнопок снизу — тогда на любом экране
+     (широкий, узкий, низкий) ничего не обрезается. Камера при этом
+     остаётся неподвижной: считается один раз на размер окна. */
+  const hr=hudEl? hudEl.getBoundingClientRect():{height:40};
+  const ur=uiEl? uiEl.getBoundingClientRect():{width:W,height:132,top:H-132,left:0};
+  const MT=hr.height+8;                 // сверху: HUD
+  let ML=14, MR=14, MB=12;
+  if(ur.width > W*0.6) MB=H-ur.top+8;   // кнопки — нижняя панель во всю ширину
+  else MR=W-ur.left+8;                  // кнопки — колонка справа
+  const uw=Math.max(80, W-ML-MR), uh=Math.max(80, H-MT-MB);
+  FOC=Math.min(uw/(SCENE.X1-SCENE.X0), uh/(SCENE.Y1-SCENE.Y0))*0.99;
+  CX=ML+uw/2-((SCENE.X0+SCENE.X1)/2)*FOC;
+  CY=MT+uh/2+((SCENE.Y0+SCENE.Y1)/2)*FOC;
+  camBuild();
+}
+window.addEventListener('resize',resize);
+
+const bigEl=document.getElementById('big');
+function showBig(txt){
+  bigEl.textContent=txt;
+  bigEl.style.transition='none'; bigEl.style.opacity='0.92'; bigEl.style.transform='scale(1)';
+  clearTimeout(showBig._t);
+  showBig._t=setTimeout(()=>{
+    bigEl.style.transition='opacity .5s, transform .5s';
+    bigEl.style.opacity='0'; bigEl.style.transform='scale(1.14)';
+  },520);
+}
+function showStat(){
+  document.getElementById('stat').innerHTML=
+    'попаданий: <b style="color:#ffd9a0">'+G.hits+'</b>'+
+    (G.lastSpeed>0.2? ' · скорость: <b style="color:#ffd9a0">'+G.lastSpeed.toFixed(1)+' м/с</b>':'')+
+    '<br><span style="opacity:.55">'+Math.round(G.fps)+' fps</span>';
+}
+/* кнопки */
+document.querySelectorAll('[data-strike]').forEach(b=>{
+  b.addEventListener('click',()=>startStrike('m'+b.dataset.strike));
+});
+const jumpBtn=document.getElementById('jump');
+function setJump(v){
+  G.jumpOn=v;
+  jumpBtn.classList.toggle('on',v);
+  document.getElementById('jtxt').textContent='ПРЫЖОК: '+(v?'ВКЛ':'ВЫКЛ');
+}
+jumpBtn.addEventListener('click',()=>setJump(!G.jumpOn));
+window.addEventListener('keydown',e=>{
+  if(e.code==='Space'){ e.preventDefault(); setJump(!G.jumpOn); return; }
+  const k=e.key;
+  if(k>='1'&&k<='5'){ startStrike('m'+k); e.preventDefault(); }
+});
+
+let last=performance.now(), fpsAcc=0, fpsN=0;
+/* Адаптивное разрешение. Узкое место — заливка канваса (пиксели), а не
+   расчёт фигурки: при DPR=2 кадр стоит вдвое-вчетверо дороже, поэтому на
+   слабом телефоне честнее отдать резкость, чем темп. Ступени масштаба
+   2.0 → 1.5 → 1.25 → 1.0; окно — 30 кадров; гистерезис: вниз при среднем
+   кадре > 20 мс, вверх при < 13 мс три окна подряд. Вверх не больше двух
+   раз, чтобы качество не мигало. Фоновую вкладку (кадр > 400 мс) не считаем. */
+const QS=[2.0,1.5,1.25,1.0];
+let qDt=[], qWk=[], qStart=0, qi=0, qFast=0, qUp=0;
+function applyScale(){ DPR=Math.max(1.0, Math.min(DPR0, QS[qi])); resize(); }
+/* dtMs — интервал между кадрами (видит всю_cost_ целиком, включая
+   растеризацию канваса, которая в Chrome идёт вне нашего кода);
+   workMs — время нашего расчёта и выдачи команд (запас по своим силам). */
+function autoQuality(dtMs, workMs, now){
+  if(!qStart){ qStart=now; return; }
+  if(now-qStart<2500) return;      // первые кадры — прогрев, не считаем
+  if(dtMs>400) return;             // вкладку вернули из фона — не считаем
+  qDt.push(dtMs); qWk.push(workMs);
+  if(qDt.length<30) return;        // окно в 30 кадров
+  /* медиана, а не среднее: один редкий долгий кадр (например, запуск приёма)
+     не должен сносить всю оценку */
+  const md=(a)=>{ a.sort((x,y)=>x-y); return a[a.length>>1]; };
+  const avg=md(qDt), work=md(qWk);
+  qDt.length=0; qWk.length=0; G.workMs=work;
+  /* вниз — если не держим темп; вверх — только при явном запасе по обеим
+     метрикам и не больше двух раз, иначе качество начнёт мигать */
+  if(avg>20 && qi<QS.length-1){
+    qi=(avg>60)? QS.length-1 : qi+1;   // совсем плохо — сразу в пол
+    applyScale(); qFast=0;
+  } else if(avg<17.5 && work<5 && qi>0 && qUp<2){
+    if(++qFast>=3){ qFast=0; qUp++; qi--; applyScale(); }
+  } else qFast=0;
+}
+function loop(now){
+  const t0=performance.now();
+  let dt=(now-last)/1000; last=now;
+  const dtMs=dt*1000;
+  dt=Math.min(dt,1/20);
+  if(dt>0){ fpsAcc+=dt; fpsN++; if(fpsAcc>0.5){ G.fps=fpsN/fpsAcc; fpsAcc=0; fpsN=0; showStat(); } }
+  DT=dt*frameScale();
+  /* фигурка */
+  STC=currentState();
+  buildSkeleton(STC, SK);
+  update(DT);
+  CLOTH.update(DT, SK);
+  /* следы для скорости */
+  PREV.handL=SK.handL? V.cp(SK.handL.p):null;
+  PREV.handR=SK.handR? V.cp(SK.handR.p):null;
+  PREV.footL=SK.footL? V.cp(SK.footL.p):null;
+  PREV.footR=SK.footR? V.cp(SK.footR.p):null;
+  /* кадр */
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  drawBackdrop();
+  if(G.camShake>0.05){
+    ctx.translate((Math.random()-0.5)*G.camShake, (Math.random()-0.5)*G.camShake*0.6);
+  }
+  drawFloor();
+  shadow((STC.rx||0), (STC.rz||0), 0.52, 0.5);
+  shadow(DUMMY.x, DUMMY.z+Math.pow(1.7/1.75,1.6)*DUMMY.bend*0.2, 0.42, 0.42);
+  render();
+  drawParticles();
+  autoQuality(dtMs, performance.now()-t0, now);
+  requestAnimationFrame(loop);
+}
+resize();
+/* прогреваем ткань, чтобы она не «падала» на первом кадре */
+STC=idleState(0); buildSkeleton(STC,SK);
+for(let i=0;i<26;i++) CLOTH.update(1/60, SK);
+showStat();
+requestAnimationFrame(loop);
+window.FB={G:G, SK:()=>SK, STC:()=>STC, MOVES:MOVES, CLOTH:CLOTH, DUMMY:DUMMY,
+  snap(id,k){ const mv=MOVES[id]; if(!mv) return false;
+    G.mv=mv; G.mk=clamp(k,0,1); G.dur=mv.dur; G.hitDone=true; G.hold=true; G.jumpA=false; return true; },
+  snapJump(id,k){ this.snap(id,k); G.jumpA=true; },
+  release(){ G.hold=false; G.mv=null; },
+  ZONE:ZONE, B:B, LIM:LIM, buildSkeleton:buildSkeleton, startStrike:startStrike,
+  setJump:setJump, VERSION:VERSION, V:V, proj:proj, POLY:()=>POLY};
+</script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6df95cf4e85bb4c19e7a9bdbcba1788362987495" integrity="sha512-iIg7k2xntmwu6/uSb5tpc/hySgZc4eoL31yB29W6tJFo2akwjPWcEqnCEdJvGexCL0KEQwVYv5BlowfhVz26hg==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f","spa":2}' crossorigin="anonymous"></script>
+</body>
+</html>
